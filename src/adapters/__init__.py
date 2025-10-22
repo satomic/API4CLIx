@@ -1,0 +1,1 @@
+"""Adapters for various AI programming assistant CLI tools."""
