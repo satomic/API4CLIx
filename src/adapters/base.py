@@ -96,16 +96,18 @@ class BaseAdapter(ABC):
         cmd: List[str],
         input_text: Optional[str] = None,
         timeout: int = 30,
-        cwd: Optional[str] = None
+        cwd: Optional[str] = None,
+        stream_output: bool = True
     ) -> Dict[str, Any]:
         """
-        Run a command asynchronously.
+        Run a command asynchronously with real-time output streaming.
 
         Args:
             cmd: Command and arguments as a list
             input_text: Optional input to send to the command
             timeout: Timeout in seconds
             cwd: Working directory
+            stream_output: Whether to stream output in real-time (default: True)
 
         Returns:
             Dict with success, stdout, stderr, and return_code
@@ -138,42 +140,58 @@ class BaseAdapter(ABC):
                 env=env
             )
 
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(input_text.encode() if input_text else None),
-                    timeout=timeout
+            # Send input if provided
+            if input_text:
+                process.stdin.write(input_text.encode())
+                process.stdin.close()
+
+            # Stream output in real-time if enabled
+            if stream_output:
+                stdout_data, stderr_data = await self._stream_output(
+                    process, timeout, cli_logger
                 )
-                return_code = process.returncode
-            except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
+            else:
+                # Fall back to wait for completion
+                try:
+                    stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                        process.communicate(),
+                        timeout=timeout
+                    )
+                    stdout_data = stdout_bytes.decode('utf-8', errors='replace')
+                    stderr_data = stderr_bytes.decode('utf-8', errors='replace')
+                except asyncio.TimeoutError:
+                    process.kill()
+                    await process.wait()
 
-                result = {
-                    "success": False,
-                    "stdout": "",
-                    "stderr": f"Command timed out after {timeout} seconds",
-                    "return_code": -1
-                }
+                    result = {
+                        "success": False,
+                        "stdout": "",
+                        "stderr": f"Command timed out after {timeout} seconds",
+                        "return_code": -1
+                    }
 
-                # Log timeout
-                cli_logger.error(f"Command timed out after {timeout} seconds")
-                cli_logger.info(f"=== CLI COMMAND EXECUTION END (TIMEOUT) ===")
-                return result
+                    # Log timeout
+                    cli_logger.error(f"Command timed out after {timeout} seconds")
+                    cli_logger.info(f"=== CLI COMMAND EXECUTION END (TIMEOUT) ===")
+                    return result
+
+            return_code = process.returncode
 
             result = {
                 "success": return_code == 0,
-                "stdout": stdout.decode('utf-8', errors='replace'),
-                "stderr": stderr.decode('utf-8', errors='replace'),
+                "stdout": stdout_data,
+                "stderr": stderr_data,
                 "return_code": return_code
             }
 
             # Log the execution result
             cli_logger.info(f"Return Code: {result['return_code']}")
             cli_logger.info(f"Success: {result['success']}")
-            if result['stdout']:
-                cli_logger.info(f"STDOUT:\n{result['stdout']}")
-            if result['stderr']:
-                cli_logger.info(f"STDERR:\n{result['stderr']}")
+            if not stream_output:  # Only log full output if not already streamed
+                if result['stdout']:
+                    cli_logger.info(f"STDOUT:\n{result['stdout']}")
+                if result['stderr']:
+                    cli_logger.info(f"STDERR:\n{result['stderr']}")
             cli_logger.info(f"=== CLI COMMAND EXECUTION END ===")
 
             return result
@@ -192,6 +210,68 @@ class BaseAdapter(ABC):
             cli_logger.info(f"=== CLI COMMAND EXECUTION END (FAILED) ===")
 
             return result
+
+    async def _stream_output(
+        self,
+        process: asyncio.subprocess.Process,
+        timeout: int,
+        cli_logger
+    ) -> tuple[str, str]:
+        """
+        Stream output from a process in real-time.
+
+        Args:
+            process: The subprocess to stream from
+            timeout: Timeout in seconds
+            cli_logger: Logger for CLI output
+
+        Returns:
+            Tuple of (stdout_data, stderr_data)
+        """
+        stdout_lines = []
+        stderr_lines = []
+        
+        async def read_stream(stream, lines_list, prefix):
+            """Read from a stream line by line and log in real-time."""
+            try:
+                while True:
+                    line_bytes = await stream.readline()
+                    if not line_bytes:
+                        break
+                    line = line_bytes.decode('utf-8', errors='replace').rstrip()
+                    if line:  # Only log non-empty lines
+                        cli_logger.info(f"{prefix} {line}")
+                        # Also print to console for immediate feedback
+                        # print(f"{prefix} {line}", flush=True)
+                    lines_list.append(line)
+            except Exception as e:
+                logger.error(f"Error reading {prefix}: {e}")
+
+        try:
+            # Create tasks to read both stdout and stderr concurrently
+            stdout_task = asyncio.create_task(
+                read_stream(process.stdout, stdout_lines, "[OUTPUT]")
+            )
+            stderr_task = asyncio.create_task(
+                read_stream(process.stderr, stderr_lines, "[ERROR]")
+            )
+
+            # Wait for both streams to finish or timeout
+            await asyncio.wait_for(
+                asyncio.gather(stdout_task, stderr_task),
+                timeout=timeout
+            )
+            
+            # Wait for process to complete
+            await process.wait()
+
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            cli_logger.error(f"Command timed out after {timeout} seconds")
+            stderr_lines.append(f"Command timed out after {timeout} seconds")
+
+        return '\n'.join(stdout_lines), '\n'.join(stderr_lines)
 
     def _format_command_for_logging(self, cmd: List[str]) -> str:
         """

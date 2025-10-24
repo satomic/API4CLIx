@@ -23,8 +23,8 @@ class CopilotAdapter(BaseAdapter):
             return self._available
 
         try:
-            # Check if copilot CLI is available
-            result = await self._run_command(["copilot", "--version"], timeout=5)
+            # Check if copilot CLI is available (disable streaming for quick check)
+            result = await self._run_command(["copilot", "--version"], timeout=5, stream_output=False)
             self._available = result["success"]
 
             if not self._available:
@@ -236,12 +236,12 @@ class CopilotAdapter(BaseAdapter):
             # Get workspace directory
             workspace = self._get_workspace_dir(kwargs.get('workspace'))
             
-            # Use git diff to get changes
+            # Use git diff to get changes (disable streaming for quick data fetch)
             diff_cmd = ["git", "diff", "--staged"]
             if files:
                 diff_cmd.extend(files)
 
-            diff_result = await self._run_command(diff_cmd, timeout=30, cwd=workspace)
+            diff_result = await self._run_command(diff_cmd, timeout=30, cwd=workspace, stream_output=False)
 
             if not diff_result["success"] or not diff_result["stdout"].strip():
                 return {
