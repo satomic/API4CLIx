@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     context: Optional[str] = Field(None, description="Additional context or previous conversation")
     assistant_type: str = Field("copilot", description="Type of AI assistant to use (copilot, claude, codex)")
     model: Optional[str] = Field(None, description="Model to use with the assistant")
+    workspace: Optional[str] = Field(None, description="Working directory for the assistant (defaults to tmp folder if not provided)")
     parameters: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional parameters for the assistant")
 
     @model_validator(mode='after')
@@ -30,6 +31,7 @@ class CodeRequest(BaseModel):
     language: Optional[str] = Field(None, description="Programming language")
     assistant_type: str = Field("copilot", description="Type of AI assistant to use")
     model: Optional[str] = Field(None, description="Model to use with the assistant")
+    workspace: Optional[str] = Field(None, description="Working directory for the assistant (defaults to tmp folder if not provided)")
 
     @model_validator(mode='after')
     def set_default_model(self):
@@ -46,6 +48,7 @@ class CommitRequest(BaseModel):
     message: Optional[str] = Field(None, description="Commit message (if not provided, will be generated)")
     assistant_type: str = Field("copilot", description="Type of AI assistant to use for message generation")
     model: Optional[str] = Field(None, description="Model to use with the assistant")
+    workspace: Optional[str] = Field(None, description="Working directory for the assistant (defaults to tmp folder if not provided)")
 
     @model_validator(mode='after')
     def set_default_model(self):

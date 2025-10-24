@@ -115,6 +115,7 @@ async def chat(
             message=request.message,
             context=request.context,
             model=request.model,
+            workspace=request.workspace,
             **request.parameters
         )
 
@@ -173,7 +174,8 @@ async def explain_code(
             code=request.code,
             language=request.language,
             message=request.message,
-            model=request.model
+            model=request.model,
+            workspace=request.workspace
         )
 
         result = CodeResponse(
@@ -225,7 +227,8 @@ async def modify_code(
             code=request.code,
             instruction=request.message,
             language=request.language,
-            model=request.model
+            model=request.model,
+            workspace=request.workspace
         )
 
         return CodeResponse(
@@ -263,7 +266,8 @@ async def generate_commit(
             assistant_type=request.assistant_type,
             files=request.files,
             message=request.message,
-            model=request.model
+            model=request.model,
+            workspace=request.workspace
         )
 
         return CommitResponse(

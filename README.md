@@ -12,6 +12,7 @@ API4CLIx 是一个统一的 REST API 层，为各种 AI 编程助手 CLI 工具�
 - 🔧 **易于扩展**: 模块化设计，易于添加新的 AI 助手适配器
 - 🧪 **完整测试**: 包含完整的测试用例
 - 📊 **健康检查**: 提供服务健康状况监控
+- 📂 **工作目录控制**: 支持指定 AI 助手的工作目录（workspace 参数）
 
 ## 🎯 当前支持的 AI 助手
 
@@ -86,6 +87,20 @@ curl -X POST "http://localhost:8000/chat" \
     "assistant_type": "copilot"
   }'
 ```
+
+**指定工作目录:**
+
+```bash
+curl -X POST "http://localhost:8000/chat" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "列出当前项目的文件",
+    "assistant_type": "copilot",
+    "workspace": "/path/to/your/project"
+  }'
+```
+
+> **注意**: 如果不指定 `workspace` 参数，Copilot 将在当前工作目录的 `tmp` 文件夹中运行（自动创建）
 
 #### 3. 解释代码
 

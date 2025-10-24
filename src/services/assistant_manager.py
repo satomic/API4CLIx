@@ -235,7 +235,7 @@ class AssistantManager:
 
         # For Copilot adapter, use the specific method
         if hasattr(adapter, 'generate_commit_message'):
-            result = await adapter.generate_commit_message(files=files)
+            result = await adapter.generate_commit_message(files=files, **kwargs)
         else:
             # Fallback: use chat to generate commit message
             # Get git diff and ask for commit message

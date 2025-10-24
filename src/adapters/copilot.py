@@ -1,6 +1,7 @@
 """GitHub Copilot CLI adapter for API4CLIx."""
 
 import json
+import os
 import re
 from typing import Dict, Any, Optional, List
 import logging
@@ -42,7 +43,7 @@ class CopilotAdapter(BaseAdapter):
         Args:
             message: The message to send
             context: Optional context (can be used to provide more context)
-            **kwargs: Additional parameters (including model)
+            **kwargs: Additional parameters (including model and workspace)
 
         Returns:
             Dict containing the response and metadata
@@ -63,7 +64,10 @@ class CopilotAdapter(BaseAdapter):
             else:
                 cmd.extend(["-p", message, "--allow-all-tools"])
 
-            result = await self._run_command(cmd, timeout=60)
+            # Get workspace directory
+            workspace = self._get_workspace_dir(kwargs.get('workspace'))
+            
+            result = await self._run_command(cmd, timeout=3600, cwd=workspace)
 
             if not result["success"]:
                 return {
@@ -98,7 +102,7 @@ class CopilotAdapter(BaseAdapter):
         Args:
             code: The code to explain
             language: Programming language (optional)
-            **kwargs: Additional parameters (including model)
+            **kwargs: Additional parameters (including model and workspace)
 
         Returns:
             Dict containing explanation and metadata
@@ -117,7 +121,10 @@ class CopilotAdapter(BaseAdapter):
 
             cmd.extend(["-p", prompt, "--allow-all-tools"])
 
-            result = await self._run_command(cmd, timeout=60)
+            # Get workspace directory
+            workspace = self._get_workspace_dir(kwargs.get('workspace'))
+
+            result = await self._run_command(cmd, timeout=60, cwd=workspace)
 
             if not result["success"]:
                 return {
@@ -159,7 +166,7 @@ class CopilotAdapter(BaseAdapter):
             code: The code to modify
             instruction: Instructions for modification
             language: Programming language (optional)
-            **kwargs: Additional parameters (including model)
+            **kwargs: Additional parameters (including model and workspace)
 
         Returns:
             Dict containing modified code and metadata
@@ -178,7 +185,10 @@ class CopilotAdapter(BaseAdapter):
 
             cmd.extend(["-p", prompt, "--allow-all-tools"])
 
-            result = await self._run_command(cmd, timeout=60)
+            # Get workspace directory
+            workspace = self._get_workspace_dir(kwargs.get('workspace'))
+
+            result = await self._run_command(cmd, timeout=60, cwd=workspace)
 
             if not result["success"]:
                 return {
@@ -209,7 +219,7 @@ class CopilotAdapter(BaseAdapter):
                 "metadata": {}
             }
 
-    async def generate_commit_message(self, files: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def generate_commit_message(self, files: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
         """
         Generate a commit message using Copilot CLI.
 
@@ -217,17 +227,21 @@ class CopilotAdapter(BaseAdapter):
 
         Args:
             files: Optional list of files to analyze
+            **kwargs: Additional parameters (including workspace)
 
         Returns:
             Dict containing generated commit message and metadata
         """
         try:
+            # Get workspace directory
+            workspace = self._get_workspace_dir(kwargs.get('workspace'))
+            
             # Use git diff to get changes
             diff_cmd = ["git", "diff", "--staged"]
             if files:
                 diff_cmd.extend(files)
 
-            diff_result = await self._run_command(diff_cmd, timeout=30)
+            diff_result = await self._run_command(diff_cmd, timeout=30, cwd=workspace)
 
             if not diff_result["success"] or not diff_result["stdout"].strip():
                 return {
@@ -240,11 +254,14 @@ class CopilotAdapter(BaseAdapter):
             prompt = f"Please generate a concise and descriptive git commit message for these changes:\n\n{diff_result['stdout']}\n\nReturn only the commit message, nothing else."
             cmd = ["copilot"]
 
-            # Add model parameter if provided (though this method doesn't currently receive kwargs)
-            # This is for future consistency when called through the assistant manager
+            # Add model parameter if provided
+            model = kwargs.get('model')
+            if model:
+                cmd.extend(["--model", model])
+            
             cmd.extend(["-p", prompt, "--allow-all-tools"])
 
-            result = await self._run_command(cmd, timeout=60)
+            result = await self._run_command(cmd, timeout=60, cwd=workspace)
 
             if not result["success"]:
                 return {
@@ -337,3 +354,26 @@ class CopilotAdapter(BaseAdapter):
 
         # If no code blocks found, return parsed output
         return self._parse_copilot_output(output)
+
+    def _get_workspace_dir(self, workspace: Optional[str] = None) -> str:
+        """
+        Get the workspace directory for running commands.
+        
+        Args:
+            workspace: Optional workspace path provided by user
+            
+        Returns:
+            Workspace directory path (either provided workspace or tmp folder)
+        """
+        if workspace:
+            # Use the provided workspace
+            return workspace
+        else:
+            # Default to current working directory's tmp folder
+            cwd = os.getcwd()
+            tmp_dir = os.path.join(cwd, "tmp")
+            
+            # Create tmp directory if it doesn't exist
+            os.makedirs(tmp_dir, exist_ok=True)
+            
+            return tmp_dir
